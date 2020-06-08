@@ -78,7 +78,7 @@ classdef realstretch < audioPlugin
         % Read and write pointers for the stretch buffer
         pWritePointer = 1;
         pReadPointer = 1;
-        % variable to store state whether writing to the buffer or not
+        % State variable to indicated stretch buffer write status
         % 0 = not writing; 1 = writing
         pIsWriting = 0;
         pStretchCounter = 0;
@@ -89,10 +89,6 @@ classdef realstretch < audioPlugin
         pAlpha = 0.01;
         % Peak level
         pLevel = [0 0];
-        % PLACEHOLDERS eventual value holders for attack time and release
-        % time properties
-        pAT;
-        pRT;
         
         pAnalysisBuffer;
         pSynthesisBuffer;
@@ -115,6 +111,7 @@ classdef realstretch < audioPlugin
             readPointer = p.pReadPointer;
             writePointer = p.pWritePointer;
             peak = p.pOldPeak;
+            alpha = p.pAlpha;
             isWriting = p.pIsWriting;
             stretch = p.tStretch;
             stretchCounter = p.pStretchCounter;
@@ -126,19 +123,8 @@ classdef realstretch < audioPlugin
             p.pInLength = length(in);
             
             for i = 1:length(in)
-                % TODO: Convert this to a function.
-                % TODO: Also consider using a peak detector for triggering
-                % the beginning of the effect and using RMS for release (or
-                % coming up with some other release scheme).
-                % calculate the peak level
-                peak = (1 - p.pAlpha) * peak + p.pAlpha * abs(in(i,:));
-%                 inPeak = abs(in(i,:));
-%                 if inPeak > peak
-%                     alpha = p.pAT;
-%                 else
-%                     alpha = p.pRT;
-%                 end
-%                 peak = (1 - alpha) * peak + alpha * inPeak;
+                % Envelope follower
+                peak = maxPeak(p,in(i,:),peak,alpha);
                 
                 % Check pIsWriting status. 0 = not writing, 1 = writing
                 if isWriting == 1
@@ -326,9 +312,6 @@ classdef realstretch < audioPlugin
             % Initialize the previous window container for overlap add on
             % the output
             p.pPrevWindow = zeros(floor(p.tWindowSize / 2), 2);
-            
-            p.pAT = 1 - exp(-2.2 * (1 / samplerate) / p.tAttack);
-            p.pRT = 1 - exp(-2.2 * (1 / samplerate) / p.tRelease);
         end
         
         %------------------------------------------------------------------
@@ -362,22 +345,24 @@ classdef realstretch < audioPlugin
             out = in;
         end
         
-        function out = levelDetector(p,in,level)
+        % This is an envelope follower with a very fast attack and a
+        % variable release time.
+        function out = maxPeak(~,in,level,alpha)
             inLevel = abs(in);
             if inLevel > level
-                level = inLevel;
+                out = inLevel;
             else
-                level = (1 - p.pAlpha) * level + p.pAlpha * inLevel;
+                out = (1 - alpha) * level + alpha * inLevel;
             end
         end
         
         %------------------------------------------------------------------
-        % MAIN PROCESSING FUNCTION
+        % MAIN FFT PROCESSING FUNCTION
         %
         % This windows the input, performs FFT, randomizes phases
         % information, performs inverse FFT, and then windows again.
         %------------------------------------------------------------------
-        function out = randomizePhase(p,in,window)
+        function out = randomizePhase(~,in,window)
             windowIn = in .* window;
             freqs = abs(real(fft(windowIn)));
             phases = rand(length(freqs),2) .* 2*pi*1j;
