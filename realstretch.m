@@ -89,6 +89,10 @@ classdef realstretch < audioPlugin
         pAlpha = 0.01;
         % Peak level
         pLevel = [0 0];
+        % Ramp in coefficients and pointer
+        pRamp;
+        pRampPointer;
+        pRampLength;
         
         pAnalysisBuffer;
         pSynthesisBuffer;
@@ -96,7 +100,7 @@ classdef realstretch < audioPlugin
         pPaulWindow;
         pPrevWindow;
         
-        pInLength
+        pInLength;
     end
     
     methods
@@ -110,6 +114,8 @@ classdef realstretch < audioPlugin
             % init stored variables
             readPointer = p.pReadPointer;
             writePointer = p.pWritePointer;
+            rampPointer = p.pRampPointer;
+            rampLength = p.pRampLength;
             peak = p.pOldPeak;
             alpha = p.pAlpha;
             isWriting = p.pIsWriting;
@@ -130,15 +136,22 @@ classdef realstretch < audioPlugin
                 if isWriting == 1
                     % Currently writing to stretch buffer
                     
+                    if rampPointer < rampLength
+                        input = in(i,:).*p.pRamp(rampPointer);
+                    else
+                        input = in(i,:);
+                    end
+                    rampPointer = rampPointer + 1;
+                    
                     % Non-destructively write to the stretch buffer
                     p.pStretchBuffer(writePointer,1:2) = ...
-                        p.pStretchBuffer(writePointer,1:2) + in(i,1:2);
+                        p.pStretchBuffer(writePointer,1:2) + input;
                     
                     % If the peak level dips below threshold, set isWriting
                     % to 0 so that it stop writing on the next iteration.
                     if peak < p.tThreshold
                         isWriting = 0;
-                    end
+                    end                    
                 else % isWriting == 0 (implied)
                     % Not currently writing to stretch buffer
                     
@@ -153,10 +166,16 @@ classdef realstretch < audioPlugin
                         isWriting = 1;
                         % Update writePointer to match the readPointer
                         writePointer = readPointer;
+                        % Set up ramp in
+                        p.pRamp = linspace(0,1,rampLength);
+                        rampPointer = 1;
                         
+                        input = in(i,:).*p.pRamp(rampPointer);
                         % Non-desctructively write to stretch buffer
                         p.pStretchBuffer(writePointer,1:2) = ...
-                            p.pStretchBuffer(writePointer,1:2) + in(i,1:2);
+                            p.pStretchBuffer(writePointer,1:2) + input;
+                        
+                        rampPointer = rampPointer+1;
                     end
                 end
                 
@@ -263,6 +282,7 @@ classdef realstretch < audioPlugin
             
             p.pReadPointer = readPointer;
             p.pWritePointer = writePointer;
+            p.pRampPointer = rampPointer;
             p.pOldPeak = peak;
             p.pIsWriting = isWriting;
             p.pStretchCounter = stretchCounter;
@@ -281,6 +301,9 @@ classdef realstretch < audioPlugin
             write(p.pSynthesisBuffer,[0 0; 0 0]);
             read(p.pAnalysisBuffer,2);
             read(p.pSynthesisBuffer,2);
+            
+            % Set the ramp length to 1 ms.
+            p.pRampLength = getSampleRate(p) / 1000;
         end
     end
     
