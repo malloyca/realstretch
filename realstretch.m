@@ -90,9 +90,9 @@ classdef realstretch < audioPlugin
         % Peak level
         pLevel = [0 0];
         % Ramp in coefficients and pointer
-        pRamp;
-        pRampPointer;
-        pRampLength;
+        pRamp = linspace(0,1,32);
+        pRampPointer = 1;
+        pRampLength = 32;
         
         pAnalysisBuffer;
         pSynthesisBuffer;
@@ -144,8 +144,8 @@ classdef realstretch < audioPlugin
                     rampPointer = rampPointer + 1;
                     
                     % Non-destructively write to the stretch buffer
-                    p.pStretchBuffer(writePointer,1:2) = ...
-                        p.pStretchBuffer(writePointer,1:2) + input;
+                    p.pStretchBuffer(writePointer,:) = ...
+                        p.pStretchBuffer(writePointer,:) + input;
                     
                     % If the peak level dips below threshold, set isWriting
                     % to 0 so that it stop writing on the next iteration.
@@ -166,10 +166,14 @@ classdef realstretch < audioPlugin
                         isWriting = 1;
                         % Update writePointer to match the readPointer
                         writePointer = readPointer;
-                        % Set up ramp in
-                        p.pRamp = linspace(0,1,rampLength);
+                        % Set ramp in pointer to 1
+                        % TODO: Technically, I could remove this since when
+                        % the ramp pointer is 1, the ramp value is 0. Thus
+                        % we could just set the ramp pointer to 2, not
+                        % iterate, and then let it get taken care of in the
+                        % front half of this if statement. I'll leave it
+                        % for now though.
                         rampPointer = 1;
-                        
                         input = in(i,:).*p.pRamp(rampPointer);
                         % Non-desctructively write to stretch buffer
                         p.pStretchBuffer(writePointer,1:2) = ...
@@ -188,9 +192,6 @@ classdef realstretch < audioPlugin
                 if writePointer > length(p.pStretchBuffer)
                     writePointer = 1;
                 end
-                
-                % TODO: write from stretch buffer to FFT analysis buffer
-                % and clear stretch buffer
                 
                 % TODO: I need to come up with a system for calculating
                 % when it is time to copy from the stretch buffer to the
@@ -217,26 +218,21 @@ classdef realstretch < audioPlugin
 %                 write(p.pAnalysisBuffer, p.pStretchBuffer(readPointer:readPointer+numIterations-1,:));
                 tempBuffer = zeros(numIterations,2);
                 for j = 1:numIterations % while stretchCounter >= 1.0
-                    % !!!!!!!! THIS IS THE TROUBLE SPOT !!!!!!!!!!
-                    % Try moving this to its own for loop by calculating
-                    % the number of samples to copy over and then using
-                    % that for the loop index.
-%                     write(p.pAnalysisBuffer, ...
-%                         p.pStretchBuffer(readPointer,1:2));
+                    % Accumulate samples to write to the analysis buffer
+                    % while still iterating through the stretch buffer.
                     tempBuffer(j,:) = p.pStretchBuffer(readPointer,:);
                     % Clear the stretch buffer sample after writing it to
                     % the analysis buffer
                     for k = 1:2
                         p.pStretchBuffer(readPointer,k) = 0;
                     end
-                    % TODO: Determine if this is the correct place to
-                    % increment read pointer
+                    % Increment read pointer
                     readPointer = readPointer + 1;
                     if readPointer > length(p.pStretchBuffer)
                         readPointer = 1;
                     end
                     % Decrement stretchCounter by 1 so that we retain only
-                    % the fractional portion.
+                    % the fractional portion when the loop is done.
                     stretchCounter = stretchCounter - 1;
                 end
                 write (p.pAnalysisBuffer, tempBuffer);
@@ -301,9 +297,6 @@ classdef realstretch < audioPlugin
             write(p.pSynthesisBuffer,[0 0; 0 0]);
             read(p.pAnalysisBuffer,2);
             read(p.pSynthesisBuffer,2);
-            
-            % Set the ramp length to 1 ms.
-            p.pRampLength = getSampleRate(p) / 1000;
         end
     end
     
@@ -315,6 +308,7 @@ classdef realstretch < audioPlugin
         % INITIALIZATION FUNCTION
         %------------------------------------------------------------------
         function p = realstretch()
+            % TODO: Determine if this is necessary
             samplerate = getSampleRate(p);
             tenSeconds = 1920000;
             % initialize the input buffer to ten seconds
@@ -335,6 +329,7 @@ classdef realstretch < audioPlugin
             % Initialize the previous window container for overlap add on
             % the output
             p.pPrevWindow = zeros(floor(p.tWindowSize / 2), 2);
+            
         end
         
         %------------------------------------------------------------------
