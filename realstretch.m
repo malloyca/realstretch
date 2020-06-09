@@ -38,16 +38,13 @@ classdef realstretch < audioPlugin
         % Stretch multiplier
         tStretch = 4;
         % Analysis window size in samples
-        tWindowSize = 8192;
+        tWindowSize = '4096';
+%         tWindowSize = 8192;
         
         % Threshold in volts
         % TODO: convert to dB
         tThreshold = 0.05;
         
-        % PLACEHOLDERS for eventual tunable attack and release times (s)
-        % TODO: convert from seconds to ms.
-        tAttack = 0.005;
-        tRelease = 0.050;
     end
     
     %----------------------------------------------------------------------
@@ -57,15 +54,16 @@ classdef realstretch < audioPlugin
         PluginInterface = audioPluginInterface( ...
             audioPluginParameter('tStretch',...
             'DisplayName','Stretch','Label','x',...
-            'Mapping',{'lin',1.5,10}...
+            'Mapping',{'lin',1.5,20}...
             ),...
             audioPluginParameter('tThreshold',...
             'DisplayName','Threshold',...
             'Mapping',{'log', 0.01, 0.5}...
-            ))%,...
-%             audioPluginParameter('tWindowSize',...
-%             'DisplayName','Window Size',...
-%             'Mapping',{'log',16,16384}))
+            ),...
+            audioPluginParameter('tWindowSize',...
+            'DisplayName','Window Size',...
+            'Mapping',{'enum','256','512','1024','2048','4096','6144',...
+            '8192','12288','16384','24576','32768','49152','65536'}))
     end
     
     %----------------------------------------------------------------------
@@ -98,8 +96,14 @@ classdef realstretch < audioPlugin
         pSynthesisBuffer;
         pHann;
         pPaulWindow;
-        pPrevWindow;
         
+        pWindowSize = 4096;
+        
+        pPrevWindow = zeros(48000,2);
+        pLastWindowSize;
+        pPrevWinPointer = 1;
+        
+        % TODO: Do I need this?
         pInLength;
     end
     
@@ -112,6 +116,7 @@ classdef realstretch < audioPlugin
             out = zeros(size(in));
             
             % init stored variables
+            threshold = p.tThreshold;
             readPointer = p.pReadPointer;
             writePointer = p.pWritePointer;
             rampPointer = p.pRampPointer;
@@ -122,11 +127,15 @@ classdef realstretch < audioPlugin
             stretch = p.tStretch;
             stretchCounter = p.pStretchCounter;
             window = p.pPaulWindow;
-            windowSize = p.tWindowSize;
+%             window = p.pHann;
+            windowSize = p.pWindowSize;
             halfWindowSize = windowSize / 2;
+            lastWindowSize = p.pLastWindowSize;
             hopSize = floor(halfWindowSize / stretch);
             overlap = windowSize - hopSize;
             p.pInLength = length(in);
+            
+            prevWinPointer = p.pPrevWinPointer;
             
             for i = 1:length(in)
                 % Envelope follower
@@ -149,7 +158,7 @@ classdef realstretch < audioPlugin
                     
                     % If the peak level dips below threshold, set isWriting
                     % to 0 so that it stop writing on the next iteration.
-                    if peak < p.tThreshold
+                    if peak < threshold
                         isWriting = 0;
                     end                    
                 else % isWriting == 0 (implied)
@@ -161,7 +170,7 @@ classdef realstretch < audioPlugin
                     % If the peak level goes above the threshold, set
                     % writePointer = readPointer, set isWriting = 1, and
                     % start writing
-                    if peak >= p.tThreshold
+                    if peak >= threshold
                         % Set isWriting status to true
                         isWriting = 1;
                         % Update writePointer to match the readPointer
@@ -245,7 +254,10 @@ classdef realstretch < audioPlugin
             
             % Check if the number of unread samples on the analysis
             % buffer >= windowSize.
-            
+            % TODO: Figure out how this relates to changing the window
+            % size. Right now, as you change the window size, it is
+            % affecting this process, but I'm not sure if that's a problem
+            % or not.
             numIterations = floor(p.pAnalysisBuffer.NumUnreadSamples / windowSize);
             for j = 1:numIterations % while p.pAnalysisBuffer.NumUnreadSamples >= windowSize
                 % Read a windowSize worth of sample from the analysis
@@ -256,18 +268,44 @@ classdef realstretch < audioPlugin
                 
                 winFFTOut = randomizePhase(p,analysisBuffer,window);
                 
+                % TODO: Need to accumulate the audio in temp buffer like
+                % before so that no errors are thrown, but so that we can
+                % also iterate through the samples.
+                synthBuff = zeros(halfWindowSize,2);
+                for k = 1:halfWindowSize
+                    % Add the front half of the output window to the back
+                    % half from the last window
+                    synthBuff(k,:) = winFFTOut(k,:) + ...
+                        p.pPrevWindow(prevWinPointer,:);
+                    % Reset the previous window buffer after reading the
+                    % sample.
+                    p.pPrevWindow(prevWinPointer,:) = [0 0];
+                    % Iterate previous window pointer
+                    prevWinPointer = prevWinPointer + 1;
+                end
+                % Reset the pointer
+                prevWinPointer = 1;
+                
+                nextWindow = zeros(halfWindowSize,2);
+                for k = 1:halfWindowSize
+                    nextWindow(k,:) = winFFTOut(k+halfWindowSize,:);
+                end
+                
                 % TODO: Convert this to a function for cleanliness of code.
                 % TODO: Modify this so that it will continue to work when
                 % changing the window size.
                 % Sum the front half of winStretchOut and the back half
                 % of the last window (overlap-add)
-                write(p.pSynthesisBuffer, ...
-                    winFFTOut(1:halfWindowSize,1:2) + ...
-                    p.pPrevWindow(1:halfWindowSize,1:2));
+                write(p.pSynthesisBuffer, synthBuff);
                 % Store the back half of winStretchOut for the next
                 % iteration.
-                p.pPrevWindow = ...
-                    winFFTOut(halfWindowSize+1:windowSize,:);
+                
+                for k = 1:halfWindowSize
+                    p.pPrevWindow(k,:) = nextWindow(k,:);
+                end
+%                 p.pPrevWindow(prevWinPointer+halfWindowSize+1:...
+%                     prevWinPointer+2*halfWindowSize,:) = ...
+%                     winFFTOut(halfWindowSize+1:windowSize,:);
             end
             
             % Read from synthesis buffer and send to output
@@ -282,6 +320,7 @@ classdef realstretch < audioPlugin
             p.pOldPeak = peak;
             p.pIsWriting = isWriting;
             p.pStretchCounter = stretchCounter;
+            p.pLastWindowSize = windowSize;
         end
         
         %------------------------------------------------------------------
@@ -322,13 +361,10 @@ classdef realstretch < audioPlugin
             read(p.pAnalysisBuffer,2);
             read(p.pSynthesisBuffer,2);
             % Initialize the Hanning window
-            p.pHann = hann(p.tWindowSize,'periodic');
-            index = linspace(-1,1,p.tWindowSize);
+            p.pHann = hann(p.pWindowSize,'periodic');
+            index = linspace(-1,1,p.pWindowSize);
             win = power(1 - power(index',2),1.25);
             p.pPaulWindow = [win win];
-            % Initialize the previous window container for overlap add on
-            % the output
-            p.pPrevWindow = zeros(floor(p.tWindowSize / 2), 2);
             
         end
         
@@ -343,14 +379,33 @@ classdef realstretch < audioPlugin
             p.tThreshold = val;
         end
         
-%         function set.tWindowSize(~,val)
-%             % NOTE: This is disabled for the time being until I can get
-%             % this to function properly
-%             val = floor(val/2) * 2;
-% %             p.tWindowSize = val;
-% %             index = linspace(-1,1,val);
-% %             p.pPaulWindow = power(1 - power(index',2),1.25);
-%         end
+        function set.tWindowSize(p,val)
+            validatestring(val, {'256','512','1024','2048','4096',...
+                '6144','8192','12288','16384','24576','32768','49152',...
+                '65536'},'set.tWindowSize', 'tWindowSize');
+            
+            windowSize = real(str2double(val));
+            
+            p.pWindowSize = windowSize;
+            resetPaulWindow(p,windowSize);
+            
+            % Reset buffers, etc
+            reset(p.pAnalysisBuffer);
+            reset(p.pSynthesisBuffer);
+            write(p.pAnalysisBuffer,[0 0; 0 0]);
+            write(p.pSynthesisBuffer,[0 0; 0 0]);
+            read(p.pAnalysisBuffer,2);
+            read(p.pSynthesisBuffer,2);
+            p.pPrevWindow = zeros(48000,2);
+            
+            p.tWindowSize = val;
+        end
+        
+        function resetPaulWindow(p,val)
+            index = linspace(-1,1,val);
+            win = power(1 - power(index',2),1.25);
+            p.pPaulWindow = [win win];
+        end
     end
     
     %----------------------------------------------------------------------
@@ -390,6 +445,7 @@ classdef realstretch < audioPlugin
         end
     end
 end
+
 
 % Notes:
 % - It may be worthwhile later to use four states for writing to the
