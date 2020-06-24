@@ -5,8 +5,12 @@ Realtime implementation of the Paulstretch audio time-stretch algorithm using a 
 * This project is coded in Matlab using the audio toolbox.
 The Matlab software and audio toolbox are required to edit and compile the project.
 They are available from [MathWorks](https://www.mathworks.com/products/matlab.html).
-* VST and AudioUnit (both MacOS) are available in the Plugins folder.
-A Windows version of the VST will be added soon.
+
+### Installation
+* Pre-compiled VST and AU versions of the plugin for MacOS are available under bundled in the latest release.
+To download them, click on 'Latest Release' on the left side of the page.
+They will be listed under 'Assets'.
+You can then download the versions of the plugin or code that you prefer.
 
 ### Paulstretch
 This project is based on the Paulstretch algorithm.
