@@ -11,6 +11,7 @@ They are available from [MathWorks](https://www.mathworks.com/products/matlab.ht
 To download them, click on 'Latest Release' on the left side of the page.
 They will be listed under 'Assets'.
 You can then download the versions of the plugin or code that you prefer.
+* To install copy the files to <code>/usr/Library/Audio/Plug-ins/Components/</code> for AU and <code>/usr/Library/Audio/Plug-ins/VST/</code> for VST.
 
 ### Paulstretch
 This project is based on the Paulstretch algorithm.
