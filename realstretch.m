@@ -44,6 +44,8 @@ classdef realstretch < audioPlugin
         % Threshold in volts
         % TODO: convert to dB
         tThreshold = 0.05;
+        % release
+        tRelease = 0.005;
         
     end
     
@@ -60,6 +62,9 @@ classdef realstretch < audioPlugin
             'DisplayName','Threshold',...
             'Mapping',{'log', 0.01, 0.5}...
             ),...
+            audioPluginParameter('tRelease',...
+            'DisplayName','Release',...
+            'Mapping',{'lin',0.00001,0.01}),...
             audioPluginParameter('tWindowSize',...
             'DisplayName','Window Size',...
             'Mapping',{'enum','256','512','1024','2048','4096','6144',...
@@ -100,7 +105,6 @@ classdef realstretch < audioPlugin
         pWindowSize = 4096;
         
         pPrevWindow = zeros(48000,2);
-        pLastWindowSize;
         pPrevWinPointer = 1;
         
         % TODO: Do I need this?
@@ -122,7 +126,8 @@ classdef realstretch < audioPlugin
             rampPointer = p.pRampPointer;
             rampLength = p.pRampLength;
             peak = p.pOldPeak;
-            alpha = p.pAlpha;
+%             alpha = p.pAlpha;
+            alpha = p.tRelease;
             isWriting = p.pIsWriting;
             stretch = p.tStretch;
             stretchCounter = p.pStretchCounter;
@@ -130,7 +135,6 @@ classdef realstretch < audioPlugin
 %             window = p.pHann;
             windowSize = p.pWindowSize;
             halfWindowSize = windowSize / 2;
-            lastWindowSize = p.pLastWindowSize;
             hopSize = floor(halfWindowSize / stretch);
             overlap = windowSize - hopSize;
             p.pInLength = length(in);
@@ -320,7 +324,6 @@ classdef realstretch < audioPlugin
             p.pOldPeak = peak;
             p.pIsWriting = isWriting;
             p.pStretchCounter = stretchCounter;
-            p.pLastWindowSize = windowSize;
         end
         
         %------------------------------------------------------------------
@@ -377,6 +380,10 @@ classdef realstretch < audioPlugin
         
         function set.tThreshold(p,val)
             p.tThreshold = val;
+        end
+        
+        function set.tRelease(p,val)
+            p.tRelease = val;
         end
         
         function set.tWindowSize(p,val)
