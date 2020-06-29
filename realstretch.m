@@ -2,26 +2,18 @@
 % Realtime stretch plugin version 0.03
 % Last updated: 8 June 2020
 %
+% Generation code:
+% generateAudioPlugin -au -outdir Plugins -output macos-realstretch realstretch
+% generateAudioPlugin -vst -outdir Plugins -output macos-realstretch realstretch
+%
 %
 % NOTES:
-% - Added stretch parameter controls. Does not seem to need smoothing since
-% there is the two layers of overlap add
 %
 % TODO:
-% - Currently changing window size while running the plugin does not work
-% since it messes with matrix sizes. This is addressable, but need to
-% figure out how to implement it.
-% - Plugin validation is failing because of a size mismatch on what seems
-% to be the dsp.asyncbuffer write function. Need to figure out what's going
-% on there in order to validate and generate plugin.
-% - Based on the way vector conditionals work in Matlab and general desire
-% for a better envelope detector, I want to revamp the way it is working.
-% Dan recommended a max-decay filter for it. The scheme is basically this,
-% if newPeak > peak, then peak = newPeak. Else, peak = peak * decay
-% constant. This allows for a very quick attack, but a controlled release.
 % - Implement wet/dry controls. Also create option to delay the dry signal
 % so that it is output at the same time that the stretched version starts
 % (delay by window size).
+% - Implement setter for wet control.
 %
 %
 
@@ -39,13 +31,15 @@ classdef realstretch < audioPlugin
         tStretch = 4;
         % Analysis window size in samples
         tWindowSize = '4096';
-%         tWindowSize = 8192;
         
         % Threshold in volts
         % TODO: convert to dB
         tThreshold = 0.05;
         % release
         tRelease = 0.005;
+        
+        % wet/dry control for output
+        tWet = 0.5;
         
     end
     
@@ -68,7 +62,17 @@ classdef realstretch < audioPlugin
             audioPluginParameter('tWindowSize',...
             'DisplayName','Window Size',...
             'Mapping',{'enum','256','512','1024','2048','4096','6144',...
-            '8192','12288','16384','24576','32768','49152','65536'}))
+            '8192','12288','16384','24576','32768','49152','65536'}),...
+            audioPluginParameter('tWet',...
+            'DisplayName', 'Wet/Dry mix',...
+            'Mapping',{'lin', 0, 1}),...
+            ...
+            'PluginName', 'Realstretch',...
+            'VendorName', 'Colin Malloy',...
+            'VendorVersion', '0.1.1',...
+            'InputChannels', 2,...
+            'OutputChannels', 2,...
+            'BackgroundColor', 'k');
     end
     
     %----------------------------------------------------------------------
@@ -88,8 +92,6 @@ classdef realstretch < audioPlugin
         
         % Peak level for next process block
         pOldPeak = [0 0];
-        % Alpha value for peak level detector
-        pAlpha = 0.01;
         % Peak level
         pLevel = [0 0];
         % Ramp in coefficients and pointer
@@ -126,18 +128,17 @@ classdef realstretch < audioPlugin
             rampPointer = p.pRampPointer;
             rampLength = p.pRampLength;
             peak = p.pOldPeak;
-%             alpha = p.pAlpha;
             alpha = p.tRelease;
             isWriting = p.pIsWriting;
             stretch = p.tStretch;
             stretchCounter = p.pStretchCounter;
             window = p.pPaulWindow;
-%             window = p.pHann;
             windowSize = p.pWindowSize;
             halfWindowSize = windowSize / 2;
             hopSize = floor(halfWindowSize / stretch);
             overlap = windowSize - hopSize;
             p.pInLength = length(in);
+            wet = p.tWet;
             
             prevWinPointer = p.pPrevWinPointer;
             
@@ -180,17 +181,11 @@ classdef realstretch < audioPlugin
                         % Update writePointer to match the readPointer
                         writePointer = readPointer;
                         % Set ramp in pointer to 1
-                        % TODO: Technically, I could remove this since when
-                        % the ramp pointer is 1, the ramp value is 0. Thus
-                        % we could just set the ramp pointer to 2, not
-                        % iterate, and then let it get taken care of in the
-                        % front half of this if statement. I'll leave it
-                        % for now though.
                         rampPointer = 1;
                         input = in(i,:).*p.pRamp(rampPointer);
                         % Non-desctructively write to stretch buffer
-                        p.pStretchBuffer(writePointer,1:2) = ...
-                            p.pStretchBuffer(writePointer,1:2) + input;
+                        p.pStretchBuffer(writePointer,:) = ...
+                            p.pStretchBuffer(writePointer,:) + input;
                         
                         rampPointer = rampPointer+1;
                     end
@@ -206,30 +201,10 @@ classdef realstretch < audioPlugin
                     writePointer = 1;
                 end
                 
-                % TODO: I need to come up with a system for calculating
-                % when it is time to copy from the stretch buffer to the
-                % analysis buffer. It needs to occur at a rate of
-                % 1/stretch. So if you're stretching by a factor of 2, you
-                % iterate the read pointer every other frame. So I need to
-                % calculate the stretch time. I can create a
-                % pStretchCounter that can keep track of the fractional
-                % sample place that it's at. I.E., if stretching by a
-                % factor of 4, then increment it by 0.25 each frame. Then
-                % when pStretchCounter >= 1, write a sample to the buffer
-                % and decrement it by 1.
-                
-                % TODO: clean this up!!!
-                % Note I moved the write function from inside the for loop
-                % to outside, writing the whole block at once instead of
-                % sample by sample. I'm not a huge fan of creating a
-                % temporary buffer, but it works and doesn't throw and
-                % error. It's not the end of the world.
-                % TODO: Clean this up!!
                 % Check to see if stretchCounter > 1. If so, write a sample
                 % to the analysis buffer
                 numIterations = floor(stretchCounter);
-%                 write(p.pAnalysisBuffer, p.pStretchBuffer(readPointer:readPointer+numIterations-1,:));
-                tempBuffer = zeros(numIterations,2);
+                tempBuffer = zeros(numIterations,2); % This is necessary to pass validation
                 for j = 1:numIterations % while stretchCounter >= 1.0
                     % Accumulate samples to write to the analysis buffer
                     % while still iterating through the stretch buffer.
@@ -258,23 +233,15 @@ classdef realstretch < audioPlugin
             
             % Check if the number of unread samples on the analysis
             % buffer >= windowSize.
-            % TODO: Figure out how this relates to changing the window
-            % size. Right now, as you change the window size, it is
-            % affecting this process, but I'm not sure if that's a problem
-            % or not.
             numIterations = floor(p.pAnalysisBuffer.NumUnreadSamples / windowSize);
             for j = 1:numIterations % while p.pAnalysisBuffer.NumUnreadSamples >= windowSize
                 % Read a windowSize worth of sample from the analysis
                 % buffer with a half window size overlap setting.
-                
                 analysisBuffer = read(p.pAnalysisBuffer, ...
                     windowSize, overlap);
                 
                 winFFTOut = randomizePhase(p,analysisBuffer,window);
                 
-                % TODO: Need to accumulate the audio in temp buffer like
-                % before so that no errors are thrown, but so that we can
-                % also iterate through the samples.
                 synthBuff = zeros(halfWindowSize,2);
                 for k = 1:halfWindowSize
                     % Add the front half of the output window to the back
@@ -295,9 +262,7 @@ classdef realstretch < audioPlugin
                     nextWindow(k,:) = winFFTOut(k+halfWindowSize,:);
                 end
                 
-                % TODO: Convert this to a function for cleanliness of code.
-                % TODO: Modify this so that it will continue to work when
-                % changing the window size.
+                
                 % Sum the front half of winStretchOut and the back half
                 % of the last window (overlap-add)
                 write(p.pSynthesisBuffer, synthBuff);
@@ -314,10 +279,12 @@ classdef realstretch < audioPlugin
             
             % Read from synthesis buffer and send to output
             if p.pSynthesisBuffer.NumUnreadSamples >= length(in)
-                out = read(p.pSynthesisBuffer,length(in));
+                out = read(p.pSynthesisBuffer,length(in)) * wet + ...
+                    in * (1 - wet);
                 out = clamp(p,out);
             end
             
+            % Store values for next process block
             p.pReadPointer = readPointer;
             p.pWritePointer = writePointer;
             p.pRampPointer = rampPointer;
@@ -350,8 +317,6 @@ classdef realstretch < audioPlugin
         % INITIALIZATION FUNCTION
         %------------------------------------------------------------------
         function p = realstretch()
-            % TODO: Determine if this is necessary
-            samplerate = getSampleRate(p);
             tenSeconds = 1920000;
             % initialize the input buffer to ten seconds
             p.pStretchBuffer = zeros(tenSeconds,2);
@@ -406,6 +371,10 @@ classdef realstretch < audioPlugin
             p.pPrevWindow = zeros(48000,2);
             
             p.tWindowSize = val;
+        end
+        
+        function set.tWet(p,val)
+            p.tWet = val;
         end
         
         function resetPaulWindow(p,val)
