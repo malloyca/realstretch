@@ -9,8 +9,8 @@ They are available from [MathWorks](https://www.mathworks.com/products/matlab.ht
 ### Plugin installation
 If you are interested in installing pre-compiled versions of the plugins, the lastest versions are available here:
 * MacOS:
-  * [AudioUnit](https://github.com/malloyca/realstretch/releases/download/v0.1.0-alpha/macos-realstretch.component.zip)
-  * [VST](https://github.com/malloyca/realstretch/releases/download/v0.1.0-alpha/macos-realstretch.vst.zip)
+  * [AudioUnit](https://github.com/malloyca/realstretch/files/4848239/macos-realstretch.component.zip)
+  * [VST](https://github.com/malloyca/realstretch/files/4848240/macos-realstretch.vst.zip)
 * Windows:
   * Coming soon.
 
