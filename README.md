@@ -8,7 +8,7 @@ They are available from [MathWorks](https://www.mathworks.com/products/matlab.ht
 
 ### Installation
 * Pre-compiled VST and AU versions of the plugin for MacOS are available under bundled in the latest release.
-To download them, click on 'Latest Release' on the left side of the page.
+To download them, check the latest [release](https://github.com/malloyca/realstretch/releases).
 They will be listed under 'Assets'.
 You can then download the versions of the plugin or code that you prefer.
 * To install copy the files to <code>/usr/Library/Audio/Plug-ins/Components/</code> for AU and <code>/usr/Library/Audio/Plug-ins/VST/</code> for VST.
