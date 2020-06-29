@@ -6,12 +6,13 @@ Realtime implementation of the Paulstretch audio time-stretch algorithm using a 
 The Matlab software and audio toolbox are required to edit and compile the project.
 They are available from [MathWorks](https://www.mathworks.com/products/matlab.html).
 
-### Installation
-* Pre-compiled VST and AU versions of the plugin for MacOS are available under bundled in the latest release.
-To download them, check the latest [release](https://github.com/malloyca/realstretch/releases).
-They will be listed under 'Assets'.
-You can then download the versions of the plugin or code that you prefer.
-* To install copy the files to <code>/usr/Library/Audio/Plug-ins/Components/</code> for AU and <code>/usr/Library/Audio/Plug-ins/VST/</code> for VST.
+### Plugin installation
+If you are interested in installing pre-compiled versions of the plugins, the lastest versions are available here:
+* MacOS:
+  * [AudioUnit](https://github.com/malloyca/realstretch/releases/download/v0.1.0-alpha/macos-realstretch.component.zip)
+  * [VST](https://github.com/malloyca/realstretch/releases/download/v0.1.0-alpha/macos-realstretch.vst.zip)
+* Windows:
+  * Coming soon.
 
 ### Paulstretch
 This project is based on the Paulstretch algorithm.
