@@ -1,6 +1,6 @@
 % realstretch.m
-% Realtime stretch plugin version 0.03
-% Last updated: 8 June 2020
+% Realtime stretch plugin version 0.1.3
+% Last updated: 3 July 2020
 %
 % Generation code:
 % generateAudioPlugin -au -outdir Plugins -output macos-realstretch realstretch
@@ -29,9 +29,8 @@ classdef realstretch < audioPlugin
         % Analysis window size in samples
         tWindowSize = '4096';
         
-        % Threshold in volts
-        % TODO: convert to dB
-        tThreshold = 0.05;
+        % Threshold in dB
+        tThresholdDB = -30;
         % release
         tRelease = 0.005;
         
@@ -49,9 +48,10 @@ classdef realstretch < audioPlugin
             'DisplayName','Stretch','Label','x',...
             'Mapping',{'lin',1,20}...
             ),...
-            audioPluginParameter('tThreshold',...
+            audioPluginParameter('tThresholdDB',...
             'DisplayName','Threshold',...
-            'Mapping',{'log', 0.01, 0.5}...
+            'Mapping',{'lin', -60, 0},...
+            'Label','dB'...
             ),...
             audioPluginParameter('tRelease',...
             'DisplayName','Release',...
@@ -76,8 +76,7 @@ classdef realstretch < audioPlugin
     % PRIVATE PROPERTIES
     %----------------------------------------------------------------------
     properties (Access=private)
-        % Buffer for incoming audio prior to sending it to the analysis
-        % buffer
+        % Buffer for incoming audio
         pStretchBuffer;
         % Read and write pointers for the stretch buffer
         pWritePointer = 1;
@@ -86,6 +85,9 @@ classdef realstretch < audioPlugin
         % 0 = not writing; 1 = writing
         pIsWriting = 0;
         pStretchCounter = 0;
+        
+        % Threshold value in volts
+        pThreshold = 10.^(-3/2);
         
         % Peak level for next process block
         pOldPeak = [0 0];
@@ -119,7 +121,8 @@ classdef realstretch < audioPlugin
             out = zeros(size(in));
             
             % init stored variables
-            threshold = p.tThreshold;
+%             threshold = p.tThreshold;
+            threshold = p.pThreshold;
             readPointer = p.pReadPointer;
             writePointer = p.pWritePointer;
             rampPointer = p.pRampPointer;
@@ -340,8 +343,10 @@ classdef realstretch < audioPlugin
             p.tStretch = val;
         end
         
-        function set.tThreshold(p,val)
-            p.tThreshold = val;
+        function set.tThresholdDB(p,val)
+            p.tThresholdDB = val;
+            p.pThreshold = 10.^(val/20);
+            
         end
         
         function set.tRelease(p,val)
