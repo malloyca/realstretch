@@ -1,6 +1,6 @@
 % realstretch.m
 % Realtime stretch plugin version 0.1.3
-% Last updated: 3 July 2020
+% Last updated: 7 July 2020
 %
 % Generation code:
 % generateAudioPlugin -au -outdir Plugins -output macos-realstretch realstretch
@@ -8,10 +8,18 @@
 %
 %
 % NOTES:
-%
+% - Added a second threshold for deactivating the write system. This
+% prevents the write pointer from jumping numerous time and causing high
+% frequency noise due to the discontinuities when the input signal is very
+% close to the activation threshold.
+% - Cleaned up code. Got rid of old bits, deleted unused variables, etc.
 %
 % TODO:
+% - Move resetting the buffers, etc to their own function. Used in the
+% reset function, maybe the init function, and the reset from changing the
+% window size.
 %
+% IDEAS:
 %
 
 
@@ -66,7 +74,7 @@ classdef realstretch < audioPlugin
             ...
             'PluginName', 'Realstretch',...
             'VendorName', 'Colin Malloy',...
-            'VendorVersion', '0.1.2',...
+            'VendorVersion', '0.1.3',...
             'InputChannels', 2,...
             'OutputChannels', 2,...
             'BackgroundColor','w');
@@ -100,16 +108,13 @@ classdef realstretch < audioPlugin
         
         pAnalysisBuffer;
         pSynthesisBuffer;
-        pHann;
+        % Window function from Paulstretch
         pPaulWindow;
         
         pWindowSize = 4096;
         
         pPrevWindow = zeros(48000,2);
         pPrevWinPointer = 1;
-        
-        % TODO: Do I need this?
-        pInLength;
     end
     
     methods
@@ -121,10 +126,11 @@ classdef realstretch < audioPlugin
             out = zeros(size(in));
             
             % init stored variables
-%             threshold = p.tThreshold;
             threshold = p.pThreshold;
+            threshOff = threshold * 0.7;
             readPointer = p.pReadPointer;
             writePointer = p.pWritePointer;
+            ramp = p.pRamp;
             rampPointer = p.pRampPointer;
             rampLength = p.pRampLength;
             peak = p.pOldPeak;
@@ -137,7 +143,6 @@ classdef realstretch < audioPlugin
             halfWindowSize = windowSize / 2;
             hopSize = floor(halfWindowSize / stretch);
             overlap = windowSize - hopSize;
-            p.pInLength = length(in);
             wet = p.tWet;
             
             prevWinPointer = p.pPrevWinPointer;
@@ -146,12 +151,12 @@ classdef realstretch < audioPlugin
                 % Envelope follower
                 peak = maxPeak(p,in(i,:),peak,alpha);
                 
-                % Check pIsWriting status. 0 = not writing, 1 = writing
+                % Check write status. 0 = not writing, 1 = writing
                 if isWriting == 1
                     % Currently writing to stretch buffer
                     
                     if rampPointer < rampLength
-                        input = in(i,:).*p.pRamp(rampPointer);
+                        input = in(i,:) .* ramp(rampPointer);
                     else
                         input = in(i,:);
                     end
@@ -163,7 +168,7 @@ classdef realstretch < audioPlugin
                     
                     % If the peak level dips below threshold, set isWriting
                     % to 0 so that it stop writing on the next iteration.
-                    if peak < threshold
+                    if peak < threshOff %threshold
                         isWriting = 0;
                     end                    
                 else % isWriting == 0 (implied)
@@ -182,7 +187,7 @@ classdef realstretch < audioPlugin
                         writePointer = readPointer;
                         % Set ramp in pointer to 1
                         rampPointer = 1;
-                        input = in(i,:).*p.pRamp(rampPointer);
+                        input = in(i,:).*ramp(rampPointer);
                         % Non-desctructively write to stretch buffer
                         p.pStretchBuffer(writePointer,:) = ...
                             p.pStretchBuffer(writePointer,:) + input;
@@ -205,7 +210,7 @@ classdef realstretch < audioPlugin
                 % to the analysis buffer
                 numIterations = floor(stretchCounter);
                 tempBuffer = zeros(numIterations,2); % This is necessary to pass validation
-                for j = 1:numIterations % while stretchCounter >= 1.0
+                for j = 1:numIterations
                     % Accumulate samples to write to the analysis buffer
                     % while still iterating through the stretch buffer.
                     tempBuffer(j,:) = p.pStretchBuffer(readPointer,:);
@@ -223,7 +228,7 @@ classdef realstretch < audioPlugin
                     % the fractional portion when the loop is done.
                     stretchCounter = stretchCounter - 1;
                 end
-                write (p.pAnalysisBuffer, tempBuffer);
+                write(p.pAnalysisBuffer, tempBuffer);
                 
                 % Increment stretchCounter by 1/stretch.
                 stretchCounter = stretchCounter + 1/stretch;
@@ -234,7 +239,7 @@ classdef realstretch < audioPlugin
             % Check if the number of unread samples on the analysis
             % buffer >= windowSize.
             numIterations = floor(p.pAnalysisBuffer.NumUnreadSamples / windowSize);
-            for j = 1:numIterations % while p.pAnalysisBuffer.NumUnreadSamples >= windowSize
+            for j = 1:numIterations
                 % Read a windowSize worth of sample from the analysis
                 % buffer with a half window size overlap setting.
                 analysisBuffer = read(p.pAnalysisBuffer, ...
@@ -272,9 +277,6 @@ classdef realstretch < audioPlugin
                 for k = 1:halfWindowSize
                     p.pPrevWindow(k,:) = nextWindow(k,:);
                 end
-%                 p.pPrevWindow(prevWinPointer+halfWindowSize+1:...
-%                     prevWinPointer+2*halfWindowSize,:) = ...
-%                     winFFTOut(halfWindowSize+1:windowSize,:);
             end
             
             % Read from synthesis buffer and send to output
@@ -297,8 +299,6 @@ classdef realstretch < audioPlugin
         % RESET FUNCTION
         %------------------------------------------------------------------
         function reset(p)
-            % TODO: Fill this in with anything that my be needed...
-            % initialize the input buffer to ten seconds
             p.pStretchBuffer = zeros(getSampleRate(p)*10,2);
             reset(p.pAnalysisBuffer);
             reset(p.pSynthesisBuffer);
@@ -322,14 +322,14 @@ classdef realstretch < audioPlugin
             p.pStretchBuffer = zeros(tenSeconds,2);
             % Initialize the FFT analysis/synthesis buffers, initialize
             % them with sample input and then clear those samples
+            % TODO: move this to its own function. It happens enough
+            % times...
             p.pAnalysisBuffer = dsp.AsyncBuffer;
             p.pSynthesisBuffer = dsp.AsyncBuffer;
             write(p.pAnalysisBuffer,[0 0; 0 0]);
             write(p.pSynthesisBuffer,[0 0; 0 0]);
             read(p.pAnalysisBuffer,2);
             read(p.pSynthesisBuffer,2);
-            % Initialize the Hanning window
-            p.pHann = hann(p.pWindowSize,'periodic');
             index = linspace(-1,1,p.pWindowSize);
             win = power(1 - power(index',2),1.25);
             p.pPaulWindow = [win win];
@@ -364,6 +364,8 @@ classdef realstretch < audioPlugin
             resetPaulWindow(p,windowSize);
             
             % Reset buffers, etc
+            % TODO: move this to its own function; could also then be used
+            % in the reset function
             reset(p.pAnalysisBuffer);
             reset(p.pSynthesisBuffer);
             write(p.pAnalysisBuffer,[0 0; 0 0]);
@@ -423,12 +425,3 @@ classdef realstretch < audioPlugin
         end
     end
 end
-
-
-% Notes:
-% - It may be worthwhile later to use four states for writing to the
-% buffer: startingWriting, isWriting, stoppingWriting, notWriting. The idea
-% would be that during the startingWriting phase it would implement the
-% ramp up (ramp length may need to depend on threshold setting). Similarly
-% it would implement the ramp down during stoppingWriting. isWriting would
-% write to the buffer at full gain and notWriting would do nothing.
