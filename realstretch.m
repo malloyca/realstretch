@@ -1,6 +1,6 @@
 % realstretch.m
-% Realtime stretch plugin version 0.1.3
-% Last updated: 7 July 2020
+% Realtime stretch plugin version 0.1.4
+% Last updated: 9 August 2020
 %
 % Generation code:
 % generateAudioPlugin -au -outdir Plugins -output macos-realstretch realstretch
@@ -8,6 +8,8 @@
 %
 %
 % NOTES:
+% - Added smoothing for the wet/dry parameter to prevent audio
+% discontinuities.
 % - Added a second threshold for deactivating the write system. This
 % prevents the write pointer from jumping numerous time and causing high
 % frequency noise due to the discontinuities when the input signal is very
@@ -115,6 +117,8 @@ classdef realstretch < audioPlugin
         
         pPrevWindow = zeros(48000,2);
         pPrevWinPointer = 1;
+        
+        pWet = 0.5;
     end
     
     methods
@@ -143,7 +147,6 @@ classdef realstretch < audioPlugin
             halfWindowSize = windowSize / 2;
             hopSize = floor(halfWindowSize / stretch);
             overlap = windowSize - hopSize;
-            wet = p.tWet;
             
             prevWinPointer = p.pPrevWinPointer;
             
@@ -167,8 +170,8 @@ classdef realstretch < audioPlugin
                         p.pStretchBuffer(writePointer,:) + input;
                     
                     % If the peak level dips below threshold, set isWriting
-                    % to 0 so that it stop writing on the next iteration.
-                    if peak < threshOff %threshold
+                    % to 0 so that it stops writing on the next iteration.
+                    if peak < threshOff
                         isWriting = 0;
                     end                    
                 else % isWriting == 0 (implied)
@@ -273,7 +276,6 @@ classdef realstretch < audioPlugin
                 write(p.pSynthesisBuffer, synthBuff);
                 % Store the back half of winStretchOut for the next
                 % iteration.
-                
                 for k = 1:halfWindowSize
                     p.pPrevWindow(k,:) = nextWindow(k,:);
                 end
@@ -281,8 +283,10 @@ classdef realstretch < audioPlugin
             
             % Read from synthesis buffer and send to output
             if p.pSynthesisBuffer.NumUnreadSamples >= length(in)
-                out = read(p.pSynthesisBuffer,length(in)) * wet + ...
-                    in * (1 - wet);
+                % Update smoothed wet/dry value
+                p.pWet = p.tWet - 0.5 * (p.tWet - p.pWet);
+                out = read(p.pSynthesisBuffer,length(in)) * p.pWet + ...
+                    in * (1 - p.pWet);
                 out = clamp(p,out);
             end
             
