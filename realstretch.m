@@ -119,6 +119,7 @@ classdef realstretch < audioPlugin
         pPrevWinPointer = 1;
         
         pWet = 0.5;
+        pStretch = 4;
     end
     
     methods
@@ -140,7 +141,7 @@ classdef realstretch < audioPlugin
             peak = p.pOldPeak;
             alpha = p.tRelease;
             isWriting = p.pIsWriting;
-            stretch = p.tStretch;
+            stretch = p.tStretch - 0.7 * (p.tStretch - p.pStretch);
             stretchCounter = p.pStretchCounter;
             window = p.pPaulWindow;
             windowSize = p.pWindowSize;
@@ -297,6 +298,7 @@ classdef realstretch < audioPlugin
             p.pOldPeak = peak;
             p.pIsWriting = isWriting;
             p.pStretchCounter = stretchCounter;
+            p.pStretch = stretch;
         end
         
         %------------------------------------------------------------------
