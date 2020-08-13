@@ -8,6 +8,7 @@
 %
 %
 % NOTES:
+% - Updated smoothing coefficients to improve quality.
 % - Added smoothing for the wet/dry parameter to prevent audio
 % discontinuities.
 % - Added a second threshold for deactivating the write system. This
@@ -110,7 +111,6 @@ classdef realstretch < audioPlugin
         
         pAnalysisBuffer;
         pSynthesisBuffer;
-        % Window function from Paulstretch
         pPaulWindow;
         
         pWindowSize = 4096;
@@ -141,7 +141,7 @@ classdef realstretch < audioPlugin
             peak = p.pOldPeak;
             alpha = p.tRelease;
             isWriting = p.pIsWriting;
-            stretch = p.tStretch - 0.7 * (p.tStretch - p.pStretch);
+            stretch = p.tStretch - 0.9 * (p.tStretch - p.pStretch);
             stretchCounter = p.pStretchCounter;
             window = p.pPaulWindow;
             windowSize = p.pWindowSize;
@@ -244,7 +244,7 @@ classdef realstretch < audioPlugin
             % buffer >= windowSize.
             numIterations = floor(p.pAnalysisBuffer.NumUnreadSamples / windowSize);
             for j = 1:numIterations
-                % Read a windowSize worth of sample from the analysis
+                % Read one window's worth of sample from the analysis
                 % buffer with a half window size overlap setting.
                 analysisBuffer = read(p.pAnalysisBuffer, ...
                     windowSize, overlap);
@@ -282,10 +282,19 @@ classdef realstretch < audioPlugin
                 end
             end
             
+%             % Read from synthesis buffer and send to output
+%             if p.pSynthesisBuffer.NumUnreadSamples >= length(in)
+%                 % Update smoothed wet/dry value
+%                 p.pWet = p.tWet - 0.5 * (p.tWet - p.pWet);
+%                 out = read(p.pSynthesisBuffer,length(in)) * p.pWet + ...
+%                     in * (1 - p.pWet);
+%                 out = clamp(p,out);
+%             end
+            
             % Read from synthesis buffer and send to output
             if p.pSynthesisBuffer.NumUnreadSamples >= length(in)
                 % Update smoothed wet/dry value
-                p.pWet = p.tWet - 0.5 * (p.tWet - p.pWet);
+                p.pWet = p.tWet - 0.95 * (p.tWet - p.pWet);
                 out = read(p.pSynthesisBuffer,length(in)) * p.pWet + ...
                     in * (1 - p.pWet);
                 out = clamp(p,out);
