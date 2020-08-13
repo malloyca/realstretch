@@ -3,11 +3,13 @@
 % Last updated: 9 August 2020
 %
 % Generation code:
+% validateAudioPlugin realstretch
 % generateAudioPlugin -au -outdir Plugins -output macos-realstretch realstretch
 % generateAudioPlugin -vst -outdir Plugins -output macos-realstretch realstretch
 %
 %
 % NOTES:
+% - Added LP filter.
 % - Cleaned up comments, code.
 % - Updated smoothing coefficients to improve quality.
 % - Added smoothing for the wet/dry parameter to prevent audio
