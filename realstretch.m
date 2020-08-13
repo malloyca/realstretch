@@ -271,10 +271,10 @@ classdef realstretch < audioPlugin
                 
             end
             
+            % Update smoothed wet/dry value
+            p.pWet = p.tWet - 0.95 * (p.tWet - p.pWet);
             % Read from synthesis buffer and send to output
             if p.pSynthesisBuffer.NumUnreadSamples >= length(in)
-                % Update smoothed wet/dry value
-                p.pWet = p.tWet - 0.95 * (p.tWet - p.pWet);
                 out = read(p.pSynthesisBuffer,length(in)) * p.pWet + ...
                     in * (1 - p.pWet);
                 out = clamp(p,out);
