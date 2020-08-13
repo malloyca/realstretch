@@ -8,6 +8,7 @@
 %
 %
 % NOTES:
+% - Cleaned up comments, code.
 % - Updated smoothing coefficients to improve quality.
 % - Added smoothing for the wet/dry parameter to prevent audio
 % discontinuities.
@@ -15,7 +16,6 @@
 % prevents the write pointer from jumping numerous time and causing high
 % frequency noise due to the discontinuities when the input signal is very
 % close to the activation threshold.
-% - Cleaned up code. Got rid of old bits, deleted unused variables, etc.
 %
 % TODO:
 % - Move resetting the buffers, etc to their own function. Used in the
@@ -93,18 +93,17 @@ classdef realstretch < audioPlugin
         pWritePointer = 1;
         pReadPointer = 1;
         % State variable to indicated stretch buffer write status
-        % 0 = not writing; 1 = writing
         pIsWriting = 0;
         pStretchCounter = 0;
         
-        % Threshold value in volts
+        % Threshold value
         pThreshold = 10.^(-3/2);
         
         % Peak level for next process block
         pOldPeak = [0 0];
         % Peak level
         pLevel = [0 0];
-        % Ramp in coefficients and pointer
+        % Ramp in
         pRamp = linspace(0,1,32);
         pRampPointer = 1;
         pRampLength = 32;
@@ -112,7 +111,6 @@ classdef realstretch < audioPlugin
         pAnalysisBuffer;
         pSynthesisBuffer;
         pPaulWindow;
-        
         pWindowSize = 4096;
         
         pPrevWindow = zeros(48000,2);
@@ -157,8 +155,6 @@ classdef realstretch < audioPlugin
                 
                 % Check write status. 0 = not writing, 1 = writing
                 if isWriting == 1
-                    % Currently writing to stretch buffer
-                    
                     if rampPointer < rampLength
                         input = in(i,:) .* ramp(rampPointer);
                     else
@@ -177,9 +173,6 @@ classdef realstretch < audioPlugin
                     end                    
                 else % isWriting == 0 (implied)
                     % Not currently writing to stretch buffer
-                    
-                    % If we're not currently writing, continue to not write
-                    % unless the peak level goes above threshold.
                     
                     % If the peak level goes above the threshold, set
                     % writePointer = readPointer, set isWriting = 1, and
@@ -200,12 +193,8 @@ classdef realstretch < audioPlugin
                     end
                 end
                 
-                % Iterate the write pointer. isWriting status doesn't
-                % matter. If 0, then it'll get updated when writing
-                % resumes. If 1, then we need to iterate.
+                % Iterate the write pointer.
                 writePointer = writePointer + 1;
-                % If writePointer goes beyond the bounds of the buffer,
-                % reset it to 1.
                 if writePointer > length(p.pStretchBuffer)
                     writePointer = 1;
                 end
@@ -213,7 +202,9 @@ classdef realstretch < audioPlugin
                 % Check to see if stretchCounter > 1. If so, write a sample
                 % to the analysis buffer
                 numIterations = floor(stretchCounter);
-                tempBuffer = zeros(numIterations,2); % This is necessary to pass validation
+                % Intermediary buffer was necessary to pass plugin
+                % validation.
+                tempBuffer = zeros(numIterations,2); 
                 for j = 1:numIterations
                     % Accumulate samples to write to the analysis buffer
                     % while still iterating through the stretch buffer.
@@ -266,30 +257,19 @@ classdef realstretch < audioPlugin
                 % Reset the pointer
                 prevWinPointer = 1;
                 
+                
+                % Store the back of the stretch output
                 nextWindow = zeros(halfWindowSize,2);
                 for k = 1:halfWindowSize
                     nextWindow(k,:) = winFFTOut(k+halfWindowSize,:);
                 end
-                
-                
-                % Sum the front half of winStretchOut and the back half
-                % of the last window (overlap-add)
-                write(p.pSynthesisBuffer, synthBuff);
-                % Store the back half of winStretchOut for the next
-                % iteration.
                 for k = 1:halfWindowSize
                     p.pPrevWindow(k,:) = nextWindow(k,:);
                 end
+                
+                write(p.pSynthesisBuffer, synthBuff);
+                
             end
-            
-%             % Read from synthesis buffer and send to output
-%             if p.pSynthesisBuffer.NumUnreadSamples >= length(in)
-%                 % Update smoothed wet/dry value
-%                 p.pWet = p.tWet - 0.5 * (p.tWet - p.pWet);
-%                 out = read(p.pSynthesisBuffer,length(in)) * p.pWet + ...
-%                     in * (1 - p.pWet);
-%                 out = clamp(p,out);
-%             end
             
             % Read from synthesis buffer and send to output
             if p.pSynthesisBuffer.NumUnreadSamples >= length(in)
