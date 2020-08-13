@@ -3,11 +3,13 @@
 % Last updated: 9 August 2020
 %
 % Generation code:
+% validateAudioPlugin realstretch
 % generateAudioPlugin -au -outdir Plugins -output macos-realstretch realstretch
 % generateAudioPlugin -vst -outdir Plugins -output macos-realstretch realstretch
 %
 %
 % NOTES:
+% - Added LP filter.
 % - Cleaned up comments, code.
 % - Updated smoothing coefficients to improve quality.
 % - Added smoothing for the wet/dry parameter to prevent audio
@@ -45,8 +47,11 @@ classdef realstretch < audioPlugin
         % release
         tRelease = 0.005;
         
+        % lowpass filter cutoff
+        tCutoff = 20000;
+        
         % wet/dry control for output
-        tWet = 0.5;
+        tWet = 1;
         
     end
     
@@ -67,12 +72,15 @@ classdef realstretch < audioPlugin
             audioPluginParameter('tRelease',...
             'DisplayName','Release',...
             'Mapping',{'log',0.000025,0.01}),...
+            audioPluginParameter('tCutoff',...
+            'DisplayName','LP Cutoff Frequency','Label','Hz',...
+            'Mapping',{'log',100,20000}),...
             audioPluginParameter('tWindowSize',...
             'DisplayName','Window Size',...
             'Mapping',{'enum','256','512','1024','2048','4096','6144',...
             '8192','12288','16384','24576','32768','49152','65536'}),...
             audioPluginParameter('tWet',...
-            'DisplayName', 'Wet/Dry mix',...
+            'DisplayName', 'Wet/Dry Mix',...
             'Mapping',{'lin', 0, 1}),...
             ...
             'PluginName', 'Realstretch',...
@@ -118,6 +126,14 @@ classdef realstretch < audioPlugin
         
         pWet = 0.5;
         pStretch = 4;
+        
+        % Lowpass filter
+        %TODO
+        pLP_state = 1;
+        pxh_left = 0;
+        pxh_right = 0;
+        pCutoff;% = (tan(pi*0.0113/2)-1) / (tan(pi*0.0113/2)+1);
+        pCutoff_smooth;
     end
     
     methods
@@ -242,6 +258,10 @@ classdef realstretch < audioPlugin
                 
                 winFFTOut = randomizePhase(p,analysisBuffer,window);
                 
+                if p.pLP_state
+                    winFFTOut = lowpass(p,winFFTOut);
+                end
+                
                 synthBuff = zeros(halfWindowSize,2);
                 for k = 1:halfWindowSize
                     % Add the front half of the output window to the back
@@ -301,6 +321,9 @@ classdef realstretch < audioPlugin
             write(p.pSynthesisBuffer,[0 0; 0 0]);
             read(p.pAnalysisBuffer,2);
             read(p.pSynthesisBuffer,2);
+            
+            p.pxh_left = 0;
+            p.pxh_right = 0;
         end
     end
     
@@ -329,6 +352,11 @@ classdef realstretch < audioPlugin
             win = power(1 - power(index',2),1.25);
             p.pPaulWindow = [win win];
             
+            omega_c = 2 * 20000 / p.getSampleRate;
+            cutoff = (tan(pi * omega_c/2)-1) / (tan(pi*omega_c/2)+1);
+            p.pCutoff = cutoff;
+            p.pCutoff_smooth = cutoff;
+            
         end
         
         %------------------------------------------------------------------
@@ -346,6 +374,12 @@ classdef realstretch < audioPlugin
         
         function set.tRelease(p,val)
             p.tRelease = val;
+        end
+        
+        function set.tCutoff(p,val)
+            p.tCutoff = val;
+            omega_c = 2 * val / p.getSampleRate;
+            p.pCutoff = (tan(pi * omega_c/2)-1) / (tan(pi*omega_c/2)+1);
         end
         
         function set.tWindowSize(p,val)
@@ -402,6 +436,37 @@ classdef realstretch < audioPlugin
             else
                 out = (1 - alpha) * level + alpha * inLevel;
             end
+        end
+        
+        function out = lowpass(p,in)
+            out = zeros(size(in));
+            
+            cutoff = p.pCutoff;
+            cutoff_smooth = p.pCutoff_smooth;
+            
+            xh_left = p.pxh_left;
+            xh_right = p.pxh_right;
+            
+            for i = 1:length(in)
+                cutoff_smooth = 0.001*cutoff + 0.999*cutoff_smooth;
+                
+                xh_left_new = in(i,1) - cutoff_smooth * xh_left;
+                xh_right_new = in(i,2) - cutoff_smooth * xh_right;
+                
+                ap_y_left = cutoff_smooth * xh_left_new + xh_left;
+                ap_y_right = cutoff_smooth * xh_right_new + xh_right;
+                
+                xh_left = xh_left_new;
+                xh_right = xh_right_new;
+                
+                out(i,1) = 0.5 * (in(i,1) + ap_y_left);
+                out(i,2) = 0.5 * (in(i,2) + ap_y_right);
+            end
+            
+            p.pCutoff_smooth = cutoff_smooth;
+            p.pxh_left = xh_left;
+            p.pxh_right = xh_right;
+            
         end
         
         %------------------------------------------------------------------
