@@ -7,3 +7,4 @@
 - Post instructions for using the effect
 - Reframe Release as milliseconds instead of the coefficient value.
 - Include both mono and stereo versions in next release.
+- Post instructions for opening app from web on MacOS.
