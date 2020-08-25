@@ -8,3 +8,5 @@
 - Reframe Release as milliseconds instead of the coefficient value.
 - Include both mono and stereo versions in next release.
 - Post instructions for opening app from web on MacOS.
+- Randomization amount control
+  - I think this works: `(random_blend)*(random_phase_value) + (1-random_blend)*(original_phase_value)`
