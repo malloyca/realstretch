@@ -1,34 +1,17 @@
 % realstretch.m
-% Realtime stretch plugin version 0.1.4
-% Last updated: 9 August 2020
+% Realtime stretch plugin version 1.0.0
+% Last updated: 26 August 2020
 %
 % Generation code:
 % validateAudioPlugin realstretch
-% generateAudioPlugin -au -outdir Plugins -output macos-realstretch realstretch
-% generateAudioPlugin -vst -outdir Plugins -output macos-realstretch realstretch
+% generateAudioPlugin -au -outdir Plugins -output realstretch-macos realstretch
+% generateAudioPlugin -vst -outdir Plugins -output realstretch-macos realstretch
 %
 %
 % NOTES:
 % - Added LP filter.
 % - Cleaned up comments, code.
 % - Updated smoothing coefficients to improve quality.
-% - Added smoothing for the wet/dry parameter to prevent audio
-% discontinuities.
-% - Added a second threshold for deactivating the write system. This
-% prevents the write pointer from jumping numerous time and causing high
-% frequency noise due to the discontinuities when the input signal is very
-% close to the activation threshold.
-%
-% TODO:
-% - Move resetting the buffers, etc to their own function. Used in the
-% reset function, maybe the init function, and the reset from changing the
-% window size.
-%
-% IDEAS:
-%
-
-
-
 
 
 
@@ -37,20 +20,17 @@ classdef realstretch < audioPlugin
     % TUNABLE PROPERTIES
     %----------------------------------------------------------------------
     properties
-        % Stretch multiplier
+        % Stretch factor
         tStretch = 4;
         % Analysis window size in samples
         tWindowSize = '4096';
-        
         % Threshold in dB
         tThresholdDB = -30;
-        % release
+        % Release
         tRelease = 0.005;
-        
         % lowpass filter cutoff
         tCutoff = 20000;
-        
-        % wet/dry control for output
+        % wet/dry mix parameter
         tWet = 1;
         
     end
@@ -77,15 +57,15 @@ classdef realstretch < audioPlugin
             'Mapping',{'log',100,20000}),...
             audioPluginParameter('tWindowSize',...
             'DisplayName','Window Size',...
-            'Mapping',{'enum','256','512','1024','2048','4096','6144',...
-            '8192','12288','16384','24576','32768','49152','65536'}),...
+            'Mapping',{'enum','256','512','1024','2048','4096',...
+            '8192','16384','32768','65536'}),...
             audioPluginParameter('tWet',...
             'DisplayName', 'Wet/Dry Mix',...
             'Mapping',{'lin', 0, 1}),...
             ...
             'PluginName', 'Realstretch',...
             'VendorName', 'Colin Malloy',...
-            'VendorVersion', '0.1.3',...
+            'VendorVersion', '1.0.0',...
             'InputChannels', 2,...
             'OutputChannels', 2,...
             'BackgroundColor','w');
@@ -127,12 +107,11 @@ classdef realstretch < audioPlugin
         pWet = 0.5;
         pStretch = 4;
         
-        % Lowpass filter
-        %TODO
+        % Lowpass filter properties
         pLP_state = 1;
         pxh_left = 0;
         pxh_right = 0;
-        pCutoff;% = (tan(pi*0.0113/2)-1) / (tan(pi*0.0113/2)+1);
+        pCutoff; % = (tan(pi*0.0113/2)-1) / (tan(pi*0.0113/2)+1);
         pCutoff_smooth;
     end
     
@@ -187,8 +166,7 @@ classdef realstretch < audioPlugin
                     if peak < threshOff
                         isWriting = 0;
                     end                    
-                else % isWriting == 0 (implied)
-                    % Not currently writing to stretch buffer
+                else % not writing
                     
                     % If the peak level goes above the threshold, set
                     % writePointer = readPointer, set isWriting = 1, and
@@ -336,22 +314,23 @@ classdef realstretch < audioPlugin
         %------------------------------------------------------------------
         function p = realstretch()
             tenSeconds = 1920000;
-            % initialize the input buffer to ten seconds
+            % Init input buffer to ten seconds @ 192 kHz
             p.pStretchBuffer = zeros(tenSeconds,2);
-            % Initialize the FFT analysis/synthesis buffers, initialize
-            % them with sample input and then clear those samples
-            % TODO: move this to its own function. It happens enough
-            % times...
+            
+            % Init FFT analysis/synthesis buffers
             p.pAnalysisBuffer = dsp.AsyncBuffer;
             p.pSynthesisBuffer = dsp.AsyncBuffer;
             write(p.pAnalysisBuffer,[0 0; 0 0]);
             write(p.pSynthesisBuffer,[0 0; 0 0]);
             read(p.pAnalysisBuffer,2);
             read(p.pSynthesisBuffer,2);
+            
+            % Init window function
             index = linspace(-1,1,p.pWindowSize);
             win = power(1 - power(index',2),1.25);
             p.pPaulWindow = [win win];
             
+            % Init
             omega_c = 2 * 20000 / p.getSampleRate;
             cutoff = (tan(pi * omega_c/2)-1) / (tan(pi*omega_c/2)+1);
             p.pCutoff = cutoff;
@@ -384,24 +363,14 @@ classdef realstretch < audioPlugin
         
         function set.tWindowSize(p,val)
             validatestring(val, {'256','512','1024','2048','4096',...
-                '6144','8192','12288','16384','24576','32768','49152',...
-                '65536'},'set.tWindowSize', 'tWindowSize');
-            
+                '8192','16384','32768','65536'},...
+                'set.tWindowSize', 'tWindowSize');
             windowSize = real(str2double(val));
             
             p.pWindowSize = windowSize;
             resetPaulWindow(p,windowSize);
             
-            % Reset buffers, etc
-            % TODO: move this to its own function; could also then be used
-            % in the reset function
-            reset(p.pAnalysisBuffer);
-            reset(p.pSynthesisBuffer);
-            write(p.pAnalysisBuffer,[0 0; 0 0]);
-            write(p.pSynthesisBuffer,[0 0; 0 0]);
-            read(p.pAnalysisBuffer,2);
-            read(p.pSynthesisBuffer,2);
-            p.pPrevWindow = zeros(48000,2);
+            resetBuffers(p);
             
             p.tWindowSize = val;
         end
@@ -414,6 +383,16 @@ classdef realstretch < audioPlugin
             index = linspace(-1,1,val);
             win = power(1 - power(index',2),1.25);
             p.pPaulWindow = [win win];
+        end
+        
+        function resetBuffers(p)
+            reset(p.pAnalysisBuffer);
+            reset(p.pSynthesisBuffer);
+            write(p.pAnalysisBuffer,[0 0; 0 0]);
+            write(p.pSynthesisBuffer,[0 0; 0 0]);
+            read(p.pAnalysisBuffer,2);
+            read(p.pSynthesisBuffer,2);
+            p.pPrevWindow = zeros(48000,2);
         end
     end
     
