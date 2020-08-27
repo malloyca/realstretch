@@ -1,5 +1,5 @@
 # realstretch
-Realtime implementation of the Paulstretch audio time-stretch algorithm using a novel buffer management technique
+Realtime implementation of the Paulstretch audio time-stretch algorithm using a novel buffer management technique.
 
 ## Prerequisites
 - Matlab
@@ -33,3 +33,8 @@ This project is based on the Paulstretch algorithm.
 If you are interested in that project there are GitHub pages for:
 * The original [C++](https://github.com/paulnasca/paulstretch_cpp) version and...
 * The [Python](https://github.com/paulnasca/paulstretch_python) version.
+
+## MathWorks File Exchange
+This code is also available on the MathWorks File Exchange.
+
+[![View Realstretch on File Exchange](https://www.mathworks.com/matlabcentral/images/matlab-file-exchange.svg)](https://www.mathworks.com/matlabcentral/fileexchange/79487-realstretch)
