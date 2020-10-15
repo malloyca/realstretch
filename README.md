@@ -28,6 +28,9 @@ For best performance when using large window sizes, it is recommend to increase 
 - Then go to <code>/Library/Audio/Plug-Ins/</code>
 - Place <code>macos-realstretch.component</code> in the <code>/Components/</code> folder and <code>macos-realstretch.vst</code> in the <code>/VST/</code> folder.
 
+## Demo video
+You can watch a demo video I made as part of the Audio Engineering Society Matlab Plugin Student Competition [here](https://youtu.be/oGr4s7wTwnk).
+
 ## Paulstretch
 This project is based on the Paulstretch algorithm.
 If you are interested in that project there are GitHub pages for:
