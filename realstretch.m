@@ -149,7 +149,7 @@ classdef realstretch < audioPlugin
                 peak = maxPeak(p,in(i,:),peak,alpha);
                 
                 % Check write status. 0 = not writing, 1 = writing
-                if isWriting == 1
+                if isWriting == 1 % TODO: convert to true, etc
                     if rampPointer < rampLength
                         input = in(i,:) .* ramp(rampPointer);
                     else
@@ -408,6 +408,11 @@ classdef realstretch < audioPlugin
         
         % This is an envelope follower with a very fast attack and a
         % variable release time.
+        % TODO: Can this be rewritten without the `if` statement?
+        % Something like out = (abs(in)>=level) * abs(in)) +
+        % (abs(in)<level)*( (1-alpha)*level + alpha*inLevel) )
+        % TODO: `level` should also probably be renamed to prevLevel or
+        % something similar.
         function out = maxPeak(~,in,level,alpha)
             inLevel = abs(in);
             if inLevel > level
@@ -456,7 +461,7 @@ classdef realstretch < audioPlugin
         %------------------------------------------------------------------
         function out = randomizePhase(~,in,window)
             windowIn = in .* window;
-            freqs = abs(real(fft(windowIn)));
+            freqs = abs(fft(windowIn));
             phases = rand(length(freqs),2) .* 2*pi*1j;
             y = freqs .* exp(phases);
             fftOut = real(ifft(y));
